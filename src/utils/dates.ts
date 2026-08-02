@@ -98,6 +98,34 @@ export function isPast(iso: string | null | undefined, fromIso = todayIso()): bo
   return diff !== null && diff < 0;
 }
 
+/**
+ * Parse user-typed UK date input into ISO. Accepts "14/06/2026",
+ * "14-06-2026", "14 June 2026", "14 Jun 2026" and ISO "2026-06-14".
+ * Returns null for anything ambiguous or invalid — never guesses.
+ */
+export function parseUkDateInput(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (ISO_DATE_RE.test(trimmed)) {
+    return parseIsoDate(trimmed) ? trimmed : null;
+  }
+  const numeric = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(trimmed);
+  if (numeric) {
+    const [, d, m, y] = numeric;
+    const iso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    return parseIsoDate(iso) ? iso : null;
+  }
+  const worded = /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})$/.exec(trimmed);
+  if (worded) {
+    const [, d, monthName, y] = worded;
+    const monthIndex = UK_MONTHS.findIndex((m) => m.toLowerCase().startsWith(monthName.toLowerCase().slice(0, 3)));
+    if (monthIndex === -1) return null;
+    const iso = `${y}-${String(monthIndex + 1).padStart(2, '0')}-${d.padStart(2, '0')}`;
+    return parseIsoDate(iso) ? iso : null;
+  }
+  return null;
+}
+
 /** Format a timestamp (ISO 8601 with time) for UK display: "14 June 2026, 09:30". */
 export function formatUkDateTime(isoTimestamp: string | null | undefined, fallback = '—'): string {
   if (!isoTimestamp) return fallback;
