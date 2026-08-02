@@ -148,7 +148,7 @@ export async function uploadDocument(options: {
         .from('documents')
         .upload(path, bytes.slice().buffer, { contentType: 'application/pdf', upsert: true });
       if (error) throw new UploadError('Uploading the PDF failed. You can retry.', true);
-      await supabase.from('document_files').upsert(
+      const { error: metaError } = await supabase.from('document_files').upsert(
         {
           document_id: documentId,
           household_id: householdId,
@@ -161,6 +161,9 @@ export async function uploadDocument(options: {
         },
         { onConflict: 'storage_path' },
       );
+      // A missing metadata row would orphan the stored object (untracked by
+      // delete/analyse), so treat it as a retryable failure, not silent.
+      if (metaError) throw new UploadError('Saving the uploaded file failed. You can retry.', true);
       report('uploading', 1, 1);
     } else {
       const total = input.pages.length;
@@ -173,7 +176,7 @@ export async function uploadDocument(options: {
           .from('documents')
           .upload(path, bytes.slice().buffer, { contentType: 'image/jpeg', upsert: true });
         if (error) throw new UploadError(`Uploading page ${pageNumber} failed. You can retry.`, true);
-        await supabase.from('document_files').upsert(
+        const { error: metaError } = await supabase.from('document_files').upsert(
           {
             document_id: documentId,
             household_id: householdId,
@@ -186,6 +189,7 @@ export async function uploadDocument(options: {
           },
           { onConflict: 'storage_path' },
         );
+        if (metaError) throw new UploadError(`Saving page ${pageNumber} failed. You can retry.`, true);
       }
       report('uploading', total, total);
     }

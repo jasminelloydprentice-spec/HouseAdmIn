@@ -221,6 +221,19 @@ Deno.serve(async (req) => {
   if (!membership) return errorResponse('No household found', 403);
   const householdId = membership.household_id as string;
 
+  // If the client supplied a conversation to continue, it must belong to
+  // this household — never trust the id blindly. (The RLS-scoped read only
+  // returns conversations the caller can see; missing → start fresh.)
+  if (conversationId) {
+    const { data: conv } = await rls
+      .from('assistant_conversations')
+      .select('id')
+      .eq('id', conversationId)
+      .eq('household_id', householdId)
+      .maybeSingle();
+    if (!conv) return errorResponse('Conversation not found', 404);
+  }
+
   try {
     // 1. Retrieve candidate documents (RLS-scoped RPC).
     const { data: hits, error: searchError } = await rls.rpc('search_documents', {

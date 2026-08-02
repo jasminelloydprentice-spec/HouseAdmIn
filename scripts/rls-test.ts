@@ -121,6 +121,37 @@ async function main() {
       .insert({ household_id: a.householdId, title: 'forged', due_date: '2030-01-01', created_by: b.userId });
     check('B cannot insert a reminder into A’s household', !!forgeReminderError);
 
+    console.log('\nCross-household document references (0005 hardening):');
+    // B owns their own document; try to attach a file row that points at
+    // A's storage path (the cross-household file-read primitive).
+    const { data: bDoc } = await b.client
+      .from('documents')
+      .insert({ household_id: b.householdId, created_by: b.userId, title: 'B doc', status: 'uploading' })
+      .select('id')
+      .single();
+    if (bDoc) {
+      const { error: forgePathError } = await b.client.from('document_files').insert({
+        document_id: bDoc.id,
+        household_id: b.householdId,
+        kind: 'original',
+        storage_path: `${a.householdId}/${doc.id}/original/page-1.jpg`,
+        mime_type: 'image/jpeg',
+        size_bytes: 4,
+      });
+      check("B cannot register a file row pointing at A's storage path", !!forgePathError);
+
+      // A field row whose document belongs to A but stamped with B's household.
+      const { error: forgeFieldError } = await b.client.from('document_fields').insert({
+        document_id: doc.id,
+        household_id: b.householdId,
+        key: 'stolen',
+        label: 'Stolen',
+        value_text: 'x',
+        source: 'manual',
+      });
+      check("B cannot attach a field to A's document", !!forgeFieldError);
+    }
+
     console.log('\nStorage isolation:');
     const { data: bSigned, error: bSignError } = await b.client.storage.from('documents').createSignedUrl(path, 60);
     check("B cannot create a signed URL for A's file", !!bSignError || !bSigned?.signedUrl, bSignError?.message);

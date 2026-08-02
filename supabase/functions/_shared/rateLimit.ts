@@ -1,35 +1,28 @@
 import { serviceClient } from './auth.ts';
 
 /**
- * Simple fixed-window rate limiting backed by the rate_limits table (which
- * has RLS enabled and no client policies — only this server code touches it).
+ * Fixed-window rate limiting backed by the rate_limits table (RLS-enabled,
+ * no client policies — only server code touches it via the service role).
+ *
+ * The increment happens in a single atomic `bump_rate_limit` RPC
+ * (insert … on conflict do update … returning count), so concurrent
+ * requests cannot all read the same count and slip past the cap.
  */
 export async function checkRateLimit(userId: string, action: string, limitPerHour: number): Promise<boolean> {
   const windowStart = new Date();
   windowStart.setMinutes(0, 0, 0);
-  const supabase = serviceClient();
 
-  const { data } = await supabase
-    .from('rate_limits')
-    .select('id, count')
-    .eq('user_id', userId)
-    .eq('action', action)
-    .eq('window_start', windowStart.toISOString())
-    .maybeSingle();
+  const { data, error } = await serviceClient().rpc('bump_rate_limit', {
+    p_user_id: userId,
+    p_action: action,
+    p_window: windowStart.toISOString(),
+  });
 
-  if (!data) {
-    await supabase.from('rate_limits').insert({
-      user_id: userId,
-      action,
-      window_start: windowStart.toISOString(),
-      count: 1,
-    });
-    return true;
+  // Fail closed: if the limiter itself errors, treat the request as blocked
+  // rather than granting unlimited access to a costly endpoint.
+  if (error || typeof data !== 'number') {
+    console.error('Rate limiter error', error?.message ?? 'unexpected response');
+    return false;
   }
-  if (data.count >= limitPerHour) return false;
-  await supabase
-    .from('rate_limits')
-    .update({ count: data.count + 1 })
-    .eq('id', data.id);
-  return true;
+  return data <= limitPerHour;
 }

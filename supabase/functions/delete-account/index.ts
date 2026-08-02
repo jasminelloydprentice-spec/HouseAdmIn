@@ -45,19 +45,38 @@ Deno.serve(async (req) => {
       .neq('user_id', user.userId);
     if ((count ?? 0) > 0) continue;
 
-    // 1. Storage objects under the household prefix (paginated).
-    const removeAll = async (prefix: string) => {
-      const { data: entries } = await db.storage.from('documents').list(prefix, { limit: 1000 });
-      for (const entry of entries ?? []) {
-        const path = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.id === null) {
-          await removeAll(path); // folder
-        } else {
-          await db.storage.from('documents').remove([path]);
+    // 1. Storage objects under the household prefix. Recurse into folders
+    //    and page through each level (list() caps at ~1000 per call), and
+    //    surface failures so we never drop the DB rows while objects remain.
+    const pageSize = 1000;
+    const removeAll = async (prefix: string): Promise<boolean> => {
+      let offset = 0;
+      for (;;) {
+        const { data: entries, error: listError } = await db.storage
+          .from('documents')
+          .list(prefix, { limit: pageSize, offset });
+        if (listError) return false;
+        if (!entries || entries.length === 0) break;
+        for (const entry of entries) {
+          const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+          if (entry.id === null) {
+            if (!(await removeAll(path))) return false; // folder
+          } else {
+            const { error: removeError } = await db.storage.from('documents').remove([path]);
+            if (removeError) return false;
+          }
         }
+        if (entries.length < pageSize) break;
+        offset += entries.length;
       }
+      return true;
     };
-    await removeAll(householdId);
+    const storageCleared = await removeAll(householdId);
+    if (!storageCleared) {
+      // Abort before touching the DB: better to leave a recoverable, fully
+      // referenced account than orphaned files with no rows to find them by.
+      return errorResponse('Account deletion could not remove all stored files — nothing was deleted. Please try again.', 500, `storage cleanup failed for household ${householdId}`);
+    }
 
     // 2. Household row — FK cascade removes documents, files metadata,
     //    pages, fields, tags, reminders, jobs, conversations, messages.

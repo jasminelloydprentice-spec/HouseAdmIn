@@ -4,7 +4,10 @@ project_id = "paperkeep"
 [api]
 enabled = true
 port = 54321
-schemas = ["public", "storage"]
+# Only the public schema is exposed over PostgREST. Storage is accessed
+# through the Storage API (which enforces MIME/size limits), never by
+# writing storage.objects rows directly.
+schemas = ["public"]
 max_rows = 1000
 
 [db]

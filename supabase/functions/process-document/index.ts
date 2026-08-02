@@ -120,6 +120,16 @@ Deno.serve(async (req) => {
       return await fail(`Documents are limited to ${MAX_FILES} pages`);
     }
 
+    // Defence in depth: the service-role client bypasses storage policies,
+    // so before downloading we require every path to live under this
+    // document's own household/document prefix. This stops a crafted
+    // document_files row from pointing the service role at another
+    // household's object. (The DB insert policy also enforces this prefix.)
+    const expectedPrefix = `${doc.household_id}/${documentId}/`;
+    if (files.some((f) => !f.storage_path.startsWith(expectedPrefix))) {
+      return await fail('A stored file is outside this document’s storage path');
+    }
+
     const inputs = [];
     for (const file of files) {
       const { data: blob, error: dlError } = await db.storage.from('documents').download(file.storage_path);

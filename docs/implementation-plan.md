@@ -73,10 +73,37 @@ set, jest suite green, RLS test script, typecheck/lint green.
   `parseUkDateInput`; date rollover `2026-02-30` passing schema validation)
 - `deno check` ✅ on all three Edge Functions
 - `expo export --platform ios` ✅ full app bundles through Metro
-- `npm run test:rls` — code-complete but NOT executed in the build
-  container (no Docker for local Supabase). Run it against a local stack
-  before trusting the policies — see docs/test-plan.md.
+- **Migrations + RLS exercised against a real PostgreSQL 16 instance** in
+  the build container (throwaway cluster with an auth/storage stub). All
+  five migrations apply cleanly, and the cross-household attacks were run
+  and rejected: User B cannot register a `document_files` row pointing at
+  A's storage path, cannot mis-stamp `household_id`, cannot attach a field
+  to A's document, cannot read A's rows, and `search_documents` returns
+  nothing for B. `bump_rate_limit` increments atomically and `rate_limits`
+  is unreadable by clients.
+- `npm run test:rls` (Supabase-hosted variant) — code-complete; run it
+  against a real Supabase project too (it also covers signed-URL/storage
+  isolation, which the local stub cannot fully model). See docs/test-plan.md.
 - On-device run — requires the user's iPhone; not verifiable here.
+
+### Post-review security hardening (migration 0005)
+
+A security review (opus subagent) found one HIGH and several lower issues;
+all addressed and verified:
+1. **HIGH — cross-household file read.** Child-table INSERT policies now
+   bind `document_id` to `household_id` (`document_in_household`), and
+   `document_files` requires the `storage_path` prefix to match; the
+   `process-document` function re-checks the prefix before any service-role
+   download. Proven rejected against real Postgres (above).
+2. INSERT policies for files/pages/fields/tags/jobs tie the document to the
+   household at the DB layer.
+3. `delete-account` storage cleanup is now paginated, recursion-safe, and
+   aborts before dropping DB rows if any object fails to delete.
+4. Rate limiter replaced with an atomic `bump_rate_limit` RPC (fails closed).
+5. `ask-assistant` validates `conversationId` ownership; upload now treats a
+   failed `document_files` write as a retryable error (no orphaned objects).
+6. PostgREST no longer exposes the `storage` schema.
+7. `assistant_conversations` UPDATE `with check` keeps `user_id = auth.uid()`.
 
 ## Known limitations
 

@@ -29,6 +29,14 @@ hosting provider. There is **no end-to-end encryption** in the MVP.
   `is_household_member(household_id)` derived from `auth.uid()`.
 - Separate policies for SELECT / INSERT / UPDATE / DELETE; INSERT policies
   re-check membership on the *new* row, so a forged `household_id` fails.
+- Child-table INSERT policies (files, pages, fields, tags, jobs) also bind
+  the referenced `document_id` to the stamped `household_id`
+  (`document_in_household`), and `document_files` additionally requires
+  `storage_path` to start with `{household_id}/{document_id}/`. This closes
+  a cross-household file-read path where a crafted row could otherwise point
+  the service role at another household's object (migration 0005).
+- `process-document` re-validates the storage-path prefix at runtime before
+  the service role downloads any object (defence in depth over the policy).
 - Storage: private bucket only; policies parse the household id from the
   object path and require membership for read/write/delete.
 - Signed URLs are short-lived (300 s) and minted with the user's JWT, so
@@ -66,8 +74,10 @@ hosting provider. There is **no end-to-end encryption** in the MVP.
 - `.env` is gitignored; `.env.example` contains placeholders only.
 
 ### Abuse & cost control
-- Table-based rate limiting on `process-document` and `ask-assistant`
-  (per-user, per-hour caps).
+- Per-user, per-hour rate limiting on `process-document` and
+  `ask-assistant`, incremented via a single atomic
+  `bump_rate_limit` upsert-returning-count RPC (so concurrent bursts cannot
+  slip past the cap) and failing closed if the limiter itself errors.
 - Page caps, file-size caps, image compression, no automatic re-analysis,
   idempotent processing jobs, checksum duplicate detection.
 - Token usage logged per job (counts only — never prompt contents).
