@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Paperkeep",
+    "slug": "paperkeep",
+    "scheme": "paperkeep",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.example.paperkeep",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Paperkeep uses the camera to photograph your paperwork so it can be stored securely.",
+        "NSPhotoLibraryUsageDescription": "Paperkeep lets you pick existing photos of letters and documents to store securely."
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Paperkeep uses the camera to photograph your paperwork so it can be stored securely."
+        }
+      ],
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "reminders"
+        }
+      ]
+    ],
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
