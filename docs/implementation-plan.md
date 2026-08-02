@@ -66,13 +66,17 @@ set, jest suite green, RLS test script, typecheck/lint green.
 
 ## Verification snapshot (latest run)
 
-- `npm run typecheck` ✅
-- `npm run lint` ✅
-- `npm test` ✅ (see run output in PR/commit description)
-- `npm run test:rls` — requires local Supabase (Docker); not runnable in
-  this build container; script + pgTAP-style assertions provided.
-- Expo app boot — verified via `expo export` bundling; on-device run
-  requires the user's phone.
+- `npm run typecheck` ✅ (strict, zero errors)
+- `npm run lint` ✅ (zero errors/warnings)
+- `npm test` ✅ 52 tests / 7 suites passing — the suite caught and fixed
+  two real bugs during development (month-name prefix guessing in
+  `parseUkDateInput`; date rollover `2026-02-30` passing schema validation)
+- `deno check` ✅ on all three Edge Functions
+- `expo export --platform ios` ✅ full app bundles through Metro
+- `npm run test:rls` — code-complete but NOT executed in the build
+  container (no Docker for local Supabase). Run it against a local stack
+  before trusting the policies — see docs/test-plan.md.
+- On-device run — requires the user's iPhone; not verifiable here.
 
 ## Known limitations
 

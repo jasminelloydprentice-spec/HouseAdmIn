@@ -118,7 +118,10 @@ export function parseUkDateInput(input: string | null | undefined): string | nul
   const worded = /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})$/.exec(trimmed);
   if (worded) {
     const [, d, monthName, y] = worded;
-    const monthIndex = UK_MONTHS.findIndex((m) => m.toLowerCase().startsWith(monthName.toLowerCase().slice(0, 3)));
+    const lower = monthName.toLowerCase();
+    // Accept only a full month name or its exact 3-letter abbreviation —
+    // "Juny" must not silently become June.
+    const monthIndex = UK_MONTHS.findIndex((m) => m.toLowerCase() === lower || m.toLowerCase().slice(0, 3) === lower);
     if (monthIndex === -1) return null;
     const iso = `${y}-${String(monthIndex + 1).padStart(2, '0')}-${d.padStart(2, '0')}`;
     return parseIsoDate(iso) ? iso : null;

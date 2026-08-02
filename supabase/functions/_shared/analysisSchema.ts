@@ -23,7 +23,12 @@ export const CATEGORY_SLUGS = [
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'dates must be ISO YYYY-MM-DD')
-  .refine((v) => !Number.isNaN(Date.parse(v)), 'invalid date');
+  .refine((v: string) => {
+    // Reject rolled-over dates like 2026-02-30, which Date.parse accepts.
+    const [y, m, d] = v.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+  }, 'invalid date');
 
 const isoDateTime = z
   .string()

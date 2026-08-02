@@ -11,4 +11,9 @@ module.exports = defineConfig([
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
+  {
+    // CLI scripts report via stdout by design.
+    files: ['scripts/**'],
+    rules: { 'no-console': 'off' },
+  },
 ]);
