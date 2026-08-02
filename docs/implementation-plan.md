@@ -12,7 +12,7 @@ with RLS and private storage policies.
 Scope: `src/config`, `src/theme`, `src/components`, `app/` route skeleton,
 `src/features/auth`, `supabase/migrations`, `.env.example`.
 
-Risks: Expo SDK 57 API changes (new expo-file-system API); local Supabase
+Risks: Expo SDK API changes (new expo-file-system API); local Supabase
 unavailable in CI container (mitigated: migrations reviewed + RLS test
 script for local run).
 

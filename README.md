@@ -33,7 +33,7 @@ English — with every answer linked back to the original page.
 
 | Layer | Choice |
 |---|---|
-| App | Expo SDK 57 · React Native · TypeScript (strict) · Expo Router |
+| App | Expo SDK 54 · React Native · TypeScript (strict) · Expo Router |
 | Backend | Supabase (Auth, Postgres, private Storage, Edge Functions) |
 | AI | Claude API behind a small provider interface (server-side only) |
 | Search | Postgres full-text search (pgvector deferred until justified) |
@@ -83,6 +83,10 @@ npm test
 - [Setup guide](docs/setup.md)
 - [Test plan](docs/test-plan.md)
 - [Implementation plan & status](docs/implementation-plan.md)
+
+> **SDK pin:** the project targets **Expo SDK 54** because that is what the
+> public Expo Go on the App Store supports. Bumping to SDK 55+ makes the app
+> refuse to open in Expo Go until Apple ships the newer Expo Go build.
 
 ## Honest limitations
 

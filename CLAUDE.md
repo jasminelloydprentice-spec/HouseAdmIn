@@ -63,10 +63,15 @@ npm run test:rls      # RLS isolation tests (needs local Supabase running)
 
 ## Expo note
 
-Expo SDK 57 — consult https://docs.expo.dev/versions/v57.0.0/ for exact APIs
-(several modules changed between SDK 52 and 57, e.g. `expo-file-system` now
-exposes `File`/`Directory` classes and the legacy API moved to
-`expo-file-system/legacy`).
+**Expo SDK 54** — pinned deliberately. The public Expo Go on the App Store
+supports SDK 54; Expo Go builds for SDK 55–57 are not on the store, so a
+newer SDK makes the app unrunnable on a normal iPhone ("Project is
+incompatible with this version of Expo Go"). Do **not** bump the SDK until
+App Store Expo Go catches up, or the project moves to a dev build.
+
+Consult https://docs.expo.dev/versions/v54.0.0/ for exact APIs.
+`expo-file-system` exposes `File`/`Directory`/`Paths` classes (the legacy
+API lives at `expo-file-system/legacy`).
 
 ## Testing expectations
 

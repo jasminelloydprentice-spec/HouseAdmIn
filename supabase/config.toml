@@ -23,7 +23,8 @@ enabled = true
 port = 54323
 
 # Local email testing: OTP emails are captured here, nothing is sent.
-[inbucket]
+# (Renamed from [inbucket] in newer Supabase CLI versions.)
+[local_smtp]
 enabled = true
 port = 54324
 
