@@ -44,8 +44,25 @@ npx supabase link --project-ref <ref>
 npx supabase db push        # applies migrations
 ```
 
-Use the project URL/anon key in `.env`. Email OTP is enabled by default;
-customise the OTP email template under Auth → Templates if you like.
+Use the project URL/anon key in `.env`.
+
+**Required: make the sign-in email send a code, not a link.** The app uses
+6-digit OTP codes, but Supabase's default Magic Link template sends a
+clickable link with no code in it — sign-in will be impossible until you
+change this. In the dashboard go to **Authentication → Emails → Magic
+Link** and make sure the body includes `{{ .Token }}`, e.g.:
+
+```html
+<h2>Your sign-in code</h2>
+<p>Enter this code in the app:</p>
+<p style="font-size:28px;letter-spacing:4px;"><strong>{{ .Token }}</strong></p>
+<p>This code expires in 10 minutes.</p>
+```
+
+> Supabase's built-in email sender is rate-limited to a couple of messages
+> per hour on the free tier, and may only deliver to your own account's
+> address. Configure a real SMTP provider (Auth → SMTP Settings) before
+> anyone else uses the app.
 
 ## 3. Edge Function secrets
 
