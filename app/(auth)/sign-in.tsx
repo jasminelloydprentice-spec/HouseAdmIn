@@ -37,27 +37,43 @@ export default function SignIn() {
     });
     setLoading(false);
     if (err) {
-      setError(err.message.includes('rate') ? 'Too many attempts — please wait a minute and try again.' : 'Could not send the code. Check your connection and try again.');
+      // Distinguish the common causes rather than blaming the connection for
+      // everything — a misconfigured mail sender looks nothing like offline.
+      const message = err.message.toLowerCase();
+      if (message.includes('rate') || message.includes('too many')) {
+        setError('Too many attempts — please wait a few minutes and try again.');
+      } else if (message.includes('email') || message.includes('smtp') || message.includes('send')) {
+        setError(`The server could not send the email: ${err.message}`);
+      } else {
+        setError(`Sign-in failed: ${err.message}`);
+      }
       return;
     }
     setStage('code');
   };
 
   const verifyCode = async () => {
-    if (code.trim().length < 6) {
-      setError('Enter the 6-digit code from your email.');
+    // Supabase's OTP length is configurable per project (commonly 6 or 8),
+    // so accept any plausible length rather than hard-coding one.
+    const trimmedCode = code.trim();
+    if (!/^\d{4,12}$/.test(trimmedCode)) {
+      setError('Enter the numeric code from your email.');
       return;
     }
     setLoading(true);
     setError(null);
     const { error: err } = await supabase.auth.verifyOtp({
       email: email.trim().toLowerCase(),
-      token: code.trim(),
+      token: trimmedCode,
       type: 'email',
     });
     setLoading(false);
     if (err) {
-      setError('That code was not accepted. Check it and try again, or request a new one.');
+      setError(
+        err.message.toLowerCase().includes('expired')
+          ? 'That code has expired — request a new one.'
+          : 'That code was not accepted. Check it and try again, or request a new one.',
+      );
       return;
     }
     router.replace('/(app)/(tabs)');
@@ -97,14 +113,14 @@ export default function SignIn() {
       ) : (
         <>
           <AppText tone="secondary" style={{ marginBottom: spacing.lg }}>
-            We’ve sent a 6-digit code to {email.trim()}. It can take a minute to arrive.
+            We’ve sent a sign-in code to {email.trim()}. It can take a minute to arrive.
           </AppText>
           <TextField
             label="Sign-in code"
-            placeholder="123456"
+            placeholder="Code from your email"
             keyboardType="number-pad"
             autoFocus
-            maxLength={6}
+            maxLength={12}
             value={code}
             onChangeText={(v) => {
               setCode(v);
