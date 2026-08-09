@@ -147,7 +147,13 @@ export default function ScanScreen() {
       router.push(`/document/${documentId}`);
     } catch (err) {
       uploadingRef.current = false;
-      const e = err instanceof UploadError ? err : new UploadError('The upload was interrupted.', true);
+      const e =
+        err instanceof UploadError
+          ? err
+          : new UploadError(
+              `The upload was interrupted: ${err instanceof Error ? err.message : String(err)}`,
+              true,
+            );
       setFailure({ message: e.message, retryable: e.retryable });
       setMode('error');
     }
@@ -176,7 +182,13 @@ export default function ScanScreen() {
       await proceedUpload(input, checksum, existingDocumentId);
     } catch (err) {
       uploadingRef.current = false;
-      const e = err instanceof UploadError ? err : new UploadError('Something went wrong preparing the upload.', true);
+      const e =
+        err instanceof UploadError
+          ? err
+          : new UploadError(
+              `Something went wrong preparing the upload: ${err instanceof Error ? err.message : String(err)}`,
+              true,
+            );
       setFailure({ message: e.message, retryable: e.retryable });
       setMode('error');
     }

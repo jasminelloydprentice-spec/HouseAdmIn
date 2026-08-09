@@ -51,15 +51,41 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return bytesToHex(new Uint8Array(digest));
 }
 
+/**
+ * Read a local file's bytes.
+ *
+ * Camera, photo-library and document-picker URIs are not uniformly readable
+ * by the expo-file-system `File` class (asset-library and content URIs in
+ * particular), so fall back to `fetch`, which resolves local URIs on both
+ * platforms. Throws an UploadError naming the URI scheme when both fail, so
+ * the cause is visible rather than "something went wrong".
+ */
+async function readFileBytes(uri: string): Promise<Uint8Array> {
+  try {
+    return new Uint8Array(await new File(uri).arrayBuffer());
+  } catch (fileError) {
+    try {
+      const response = await fetch(uri);
+      return new Uint8Array(await response.arrayBuffer());
+    } catch {
+      const scheme = uri.split(':')[0];
+      throw new UploadError(
+        `Could not read the selected file (${scheme} source): ${
+          fileError instanceof Error ? fileError.message : String(fileError)
+        }`,
+        false,
+      );
+    }
+  }
+}
+
 async function compressPage(page: DraftPage): Promise<Uint8Array> {
   const ctx = ImageManipulator.manipulate(page.uri);
   if (page.rotation % 360 !== 0) ctx.rotate(page.rotation % 360);
   ctx.resize({ width: TARGET_WIDTH });
   const image = await ctx.renderAsync();
   const saved = await image.saveAsync({ compress: JPEG_QUALITY, format: SaveFormat.JPEG });
-  const file = new File(saved.uri);
-  const buffer = await file.arrayBuffer();
-  return new Uint8Array(buffer);
+  return readFileBytes(saved.uri);
 }
 
 /**
@@ -77,14 +103,12 @@ export function looksBlurry(byteLength: number, width: number, height: number): 
 /** Compute the checksum for an input without uploading (used for dedupe pre-check). */
 export async function computeInputChecksum(input: UploadInput): Promise<string> {
   if (input.kind === 'pdf') {
-    const bytes = new Uint8Array(await new File(input.uri).arrayBuffer());
-    return sha256Hex(bytes);
+    return sha256Hex(await readFileBytes(input.uri));
   }
   // Hash of page-hash concatenation: stable for the same set of images in order.
   let combined = '';
   for (const page of input.pages) {
-    const bytes = new Uint8Array(await new File(page.uri).arrayBuffer());
-    combined += await sha256Hex(bytes);
+    combined += await sha256Hex(await readFileBytes(page.uri));
   }
   return sha256Hex(new TextEncoder().encode(combined));
 }
@@ -129,7 +153,7 @@ export async function uploadDocument(options: {
       })
       .select('id')
       .single();
-    if (error) throw new UploadError('Could not create the document record. Check your connection.', true);
+    if (error) throw new UploadError(`Could not create the document record: ${error.message}`, true);
     documentId = data.id as string;
   }
 
@@ -138,7 +162,7 @@ export async function uploadDocument(options: {
   // 2. Upload files.
   try {
     if (input.kind === 'pdf') {
-      const bytes = new Uint8Array(await new File(input.uri).arrayBuffer());
+      const bytes = await readFileBytes(input.uri);
       if (bytes.byteLength > MAX_PDF_BYTES) {
         throw new UploadError('PDFs must be smaller than 20 MB.', false);
       }
@@ -147,7 +171,7 @@ export async function uploadDocument(options: {
       const { error } = await supabase.storage
         .from('documents')
         .upload(path, bytes.slice().buffer, { contentType: 'application/pdf', upsert: true });
-      if (error) throw new UploadError('Uploading the PDF failed. You can retry.', true);
+      if (error) throw new UploadError(`Uploading the PDF failed: ${error.message}`, true);
       const { error: metaError } = await supabase.from('document_files').upsert(
         {
           document_id: documentId,
@@ -175,7 +199,7 @@ export async function uploadDocument(options: {
         const { error } = await supabase.storage
           .from('documents')
           .upload(path, bytes.slice().buffer, { contentType: 'image/jpeg', upsert: true });
-        if (error) throw new UploadError(`Uploading page ${pageNumber} failed. You can retry.`, true);
+        if (error) throw new UploadError(`Uploading page ${pageNumber} failed: ${error.message}`, true);
         const { error: metaError } = await supabase.from('document_files').upsert(
           {
             document_id: documentId,
@@ -196,7 +220,10 @@ export async function uploadDocument(options: {
   } catch (err) {
     // Leave the document in 'uploading' so the retry path can resume it.
     if (err instanceof UploadError) throw err;
-    throw new UploadError('The upload was interrupted. You can retry.', true);
+    throw new UploadError(
+      `The upload was interrupted: ${err instanceof Error ? err.message : String(err)}`,
+      true,
+    );
   }
 
   // 3. Mark uploaded → queued and enqueue processing.
