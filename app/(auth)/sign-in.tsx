@@ -10,25 +10,101 @@ import { supabase } from '../../src/lib/supabase';
 import { spacing } from '../../src/theme';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
+
+type Mode = 'password' | 'otp-email' | 'otp-code';
 
 /**
- * Email one-time-code sign in. Stage 1 sends the code; stage 2 verifies it.
+ * Sign in.
+ *
+ * Password is the default because it has no external dependencies — email
+ * delivery (SMTP provider, templates, rate limits) is a common source of
+ * setup failure and locks the user out of their own documents. The email
+ * one-time-code flow is kept as an alternative for deployments that have
+ * working transactional email.
+ *
  * New users are provisioned (household, profile, "Me" person) by a database
  * trigger — the client never performs privileged setup.
  */
 export default function SignIn() {
+  const [mode, setMode] = useState<Mode>('password');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
-  const [stage, setStage] = useState<'email' | 'code'>('email');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const sendCode = async () => {
+  /** Supabase errors can be verbose; keep the useful sentence. */
+  const readableError = (message: string): string => {
+    const clean = message.split('\n')[0].trim();
+    return clean.length > 160 ? `${clean.slice(0, 160)}…` : clean;
+  };
+
+  const validEmail = () => {
     const trimmed = email.trim().toLowerCase();
     if (!EMAIL_RE.test(trimmed)) {
       setError('Please enter a valid email address.');
+      return null;
+    }
+    return trimmed;
+  };
+
+  const signInWithPassword = async () => {
+    const trimmed = validEmail();
+    if (!trimmed) return;
+    if (password.length < 1) {
+      setError('Enter your password.');
       return;
     }
+    setLoading(true);
+    setError(null);
+    setNotice(null);
+    const { error: err } = await supabase.auth.signInWithPassword({ email: trimmed, password });
+    setLoading(false);
+    if (err) {
+      setError(
+        err.message.toLowerCase().includes('invalid login')
+          ? 'That email and password combination was not recognised.'
+          : readableError(err.message),
+      );
+      return;
+    }
+    router.replace('/(app)/(tabs)');
+  };
+
+  const createAccount = async () => {
+    const trimmed = validEmail();
+    if (!trimmed) return;
+    if (password.length < MIN_PASSWORD) {
+      setError(`Choose a password of at least ${MIN_PASSWORD} characters.`);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setNotice(null);
+    const { data, error: err } = await supabase.auth.signUp({ email: trimmed, password });
+    setLoading(false);
+    if (err) {
+      setError(
+        err.message.toLowerCase().includes('already registered')
+          ? 'An account already exists for that email — sign in instead.'
+          : readableError(err.message),
+      );
+      return;
+    }
+    // With email confirmation enabled, signUp returns no session until the
+    // address is verified. Say so rather than appearing to hang.
+    if (!data.session) {
+      setNotice('Account created. Confirm the email Supabase sent you, then sign in.');
+      return;
+    }
+    router.replace('/(app)/(tabs)');
+  };
+
+  const sendCode = async () => {
+    const trimmed = validEmail();
+    if (!trimmed) return;
     setLoading(true);
     setError(null);
     const { error: err } = await supabase.auth.signInWithOtp({
@@ -37,19 +113,15 @@ export default function SignIn() {
     });
     setLoading(false);
     if (err) {
-      // Distinguish the common causes rather than blaming the connection for
-      // everything — a misconfigured mail sender looks nothing like offline.
       const message = err.message.toLowerCase();
       if (message.includes('rate') || message.includes('too many')) {
         setError('Too many attempts — please wait a few minutes and try again.');
-      } else if (message.includes('email') || message.includes('smtp') || message.includes('send')) {
-        setError(`The server could not send the email: ${err.message}`);
       } else {
-        setError(`Sign-in failed: ${err.message}`);
+        setError(`Could not send the email: ${readableError(err.message)}`);
       }
       return;
     }
-    setStage('code');
+    setMode('otp-code');
   };
 
   const verifyCode = async () => {
@@ -79,6 +151,13 @@ export default function SignIn() {
     router.replace('/(app)/(tabs)');
   };
 
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setError(null);
+    setNotice(null);
+    setCode('');
+  };
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -90,7 +169,56 @@ export default function SignIn() {
         </AppText>
       </View>
 
-      {stage === 'email' ? (
+      {notice ? (
+        <AppText tone="accent" style={{ marginBottom: spacing.lg }} accessibilityLiveRegion="polite">
+          {notice}
+        </AppText>
+      ) : null}
+
+      {mode === 'password' ? (
+        <>
+          <TextField
+            label="Email address"
+            placeholder="you@example.com"
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={(v) => {
+              setEmail(v);
+              setError(null);
+            }}
+          />
+          <TextField
+            label="Password"
+            placeholder="Your password"
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete="password"
+            value={password}
+            onChangeText={(v) => {
+              setPassword(v);
+              setError(null);
+            }}
+            error={error}
+            hint={`At least ${MIN_PASSWORD} characters when creating an account.`}
+            onSubmitEditing={() => void signInWithPassword()}
+          />
+          <Button title="Sign in" onPress={() => void signInWithPassword()} loading={loading} />
+          <Button
+            title="Create an account"
+            variant="secondary"
+            onPress={() => void createAccount()}
+            style={{ marginTop: spacing.sm }}
+          />
+          <Button
+            title="Email me a code instead"
+            variant="ghost"
+            onPress={() => switchMode('otp-email')}
+            style={{ marginTop: spacing.sm }}
+          />
+        </>
+      ) : mode === 'otp-email' ? (
         <>
           <TextField
             label="Email address"
@@ -105,10 +233,16 @@ export default function SignIn() {
               setError(null);
             }}
             error={error}
-            hint="We’ll email you a one-time sign-in code. No password needed."
+            hint="We’ll email you a one-time sign-in code."
             onSubmitEditing={() => void sendCode()}
           />
           <Button title="Email me a code" onPress={() => void sendCode()} loading={loading} />
+          <Button
+            title="Use a password instead"
+            variant="ghost"
+            onPress={() => switchMode('password')}
+            style={{ marginTop: spacing.sm }}
+          />
         </>
       ) : (
         <>
@@ -131,13 +265,9 @@ export default function SignIn() {
           />
           <Button title="Sign in" onPress={() => void verifyCode()} loading={loading} />
           <Button
-            title="Use a different email"
+            title="Back"
             variant="ghost"
-            onPress={() => {
-              setStage('email');
-              setCode('');
-              setError(null);
-            }}
+            onPress={() => switchMode('password')}
             style={{ marginTop: spacing.sm }}
           />
         </>
